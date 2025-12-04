@@ -24,6 +24,18 @@ class Wall:
     def rect(self):
         return pygame.Rect(self.left, self.top, self.width, self.height)
     
+    # @staticmethod
+    # def from_dict(data: dict):
+    #     return Wall(data['left'], data['top'], data['width'], data['height'])
+
+    # def to_dict(self):
+    #     return {
+    #         'left': self.left,
+    #         'top': self.top,
+    #         'width': self.width,
+    #         'height': self.height
+    #     }
+    
     def render(self, surface: pygame.Surface, color: pygame.Color):
 
         pygame.draw.rect(surface, color, self.rect)
