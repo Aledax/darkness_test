@@ -27,7 +27,8 @@ class Player:
     
     def __init__(self, id: int, x: float, y: float):
 
-        self.id = id
+        # Client-controlled
+
         self.x = x
         self.y = y
 
@@ -45,6 +46,10 @@ class Player:
         self.eyes = []
         self.mines = []
         self.missiles = []
+
+        # Server-controlled
+
+        self.id = id
         
     @property
     def r(self):
@@ -241,6 +246,10 @@ class Player:
     def kill(self):
 
         self.respawn_timer = Player.RESPAWN_TIME
+        self.eye_cooldown = 0
+        self.mine_cooldown = 0
+        self.missile_cooldown = 0
+        self.loading = Player.LOADING_TYPE_NONE
         self.load_time = 0
     
     def render(self, surface: pygame.Surface, visibility_rects: List[pygame.Rect], color_scheme: ColorScheme):
@@ -264,7 +273,7 @@ class Player:
         new_fog_surface.fill((0, 0, 0, alpha_value), special_flags=BLEND_RGBA_MAX)
         surface.blit(new_fog_surface, self.visibility_rect.topleft, special_flags=BLEND_RGBA_MIN)
 
-    def update(self, gamestate, dt_s: float):
+    def update_and_get_hits(self, gamestate, dt_s: float):
 
         if self.loading != Player.LOADING_TYPE_NONE:
             self.load_time += dt_s
@@ -286,12 +295,15 @@ class Player:
             eye.update(gamestate, dt_s)
         self.eyes = [eye for eye in self.eyes if eye.alive]
 
+        hit_players = []
         for mine in self.mines:
-            mine.update(gamestate, dt_s)
+            mine.update(dt_s)
+            hit_players.extend(mine.check_for_hits(gamestate))
         self.mines = [mine for mine in self.mines if not mine.exploded]
 
         for missile in self.missiles:
-            missile.update(gamestate, dt_s)
+            missile.update(dt_s)
+            hit_players.extend(missile.check_for_hits(gamestate))
         self.missiles = [missile for missile in self.missiles if not missile.exploded]
 
         if not self.alive:
@@ -301,3 +313,5 @@ class Player:
                 self.x, self.y = self.spawnpoint
         else:
             self.fog_brightness = min(1, self.fog_brightness + dt_s * Player.FOG_BRIGHTNESS_CHANGE_RATE)
+
+        return hit_players

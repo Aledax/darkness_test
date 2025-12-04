@@ -35,6 +35,7 @@ class Missile:
 
         self.travel_time = Missile.TRAVEL_TIME_S
         self.explosion_time = Missile.EXPLOSION_TIME_S
+        self.just_detonated = False
 
     @property
     def landed(self):
@@ -92,14 +93,14 @@ class Missile:
             'explosion_time': self.explosion_time
         }
     
-    def update(self, gamestate, dt_s: float):
+    def update(self, dt_s: float):
 
         if self.travel_time > 0:
             self.travel_time -= dt_s
             if self.travel_time < 0:
                 self.explosion_time += self.travel_time
                 self.travel_time = 0
-                self.check_for_hits(gamestate)
+                self.just_detonated = True
 
         elif self.explosion_time > 0:
             self.explosion_time -= dt_s
@@ -108,14 +109,19 @@ class Missile:
 
     def check_for_hits(self, gamestate):
 
-        for player in gamestate.players.values():
+        if not self.just_detonated:
+            return []
+
+        self.just_detonated = False
+        hit_players = []
+        for peername, player in gamestate.players.items():
             if player.id != self.player_id and player.alive:
                 dx = player.x - self.destination[0]
                 dy = player.y - self.destination[1]
                 distance_sq = dx * dx + dy * dy
                 if distance_sq <= Missile.EXPLOSION_RADIUS * Missile.EXPLOSION_RADIUS:
-                    print('Missile hit player', player.id)
-                    player.kill()
+                    hit_players.append(peername)
+        return hit_players
 
     def render(self, surface: pygame.Surface, visibility_rects: List[pygame.Rect], missile_surfaces: List[pygame.Surface], explosion_surfaces: List[pygame.Surface]):
 

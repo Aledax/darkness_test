@@ -32,7 +32,22 @@ class GameState:
             *map.spawn_positions[len(self.players) % len(map.spawn_positions)]
         )
 
-    def update(self, dt_s: float):
+    def update_server(self, dt_s: float):
 
-        for player in self.players.values():
-            player.update(self, dt_s)
+        pass
+        # for player in self.players.values():
+        #     player.update(self, dt_s)
+
+    # def update_client_and_get_hits(self, sockname: str, dt_s: float):
+
+    #     if sockname in self.players:
+    #         return self.players[sockname].update_and_get_hits(self, dt_s)
+
+    def integrate_incoming_server_gamestate(self, sockname: str, incoming_gamestate: 'GameState'):
+
+        new_players = {}
+        if sockname in self.players:
+            new_players[sockname] = self.players[sockname]
+        for peername, incoming_player in incoming_gamestate.players.items():
+            new_players[peername] = incoming_player
+        self.players = new_players

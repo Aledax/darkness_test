@@ -1,4 +1,5 @@
 import sys
+import time
 import pygame
 from pygame.locals import *
 from src.utils.pygameutils import *
@@ -38,9 +39,9 @@ class PygameApp:
         self.client = client
         self.sockname = client.sockname
 
-        self.last_gamestate = self.client.get_gamestate()
-        self.player = None
-        self.map = MAPS[self.last_gamestate.map_name]
+        self.gamestate = self.client.get_gamestate()
+        self.player = self.gamestate.players[self.sockname]
+        self.map = MAPS[self.gamestate.map_name]
         self.color_scheme = self.map.color_scheme
         
         self.bg_surface = pygame.surface.Surface(self.resolution, SRCALPHA).convert_alpha()
@@ -64,6 +65,8 @@ class PygameApp:
 
     def handle_input(self, keys_pressed: list, aiming_destination: Tuple[int, int]):
 
+        send_player_update = True # CHANGE TO FALSE AND MOVE OUTSIDE LATER
+
         direction = [0, 0]
         if self.player.loading == Player.LOADING_TYPE_NONE:
             if keys_pressed[KEYBIND_LEFT]:
@@ -79,7 +82,7 @@ class PygameApp:
         if angle is not None:
             self.player.move_by(vector_2_angle(direction), 1.0 / self.fps)
             self.map.resolve_player_wall_collisions(self.player, tuple(direction))
-            self.client.send_message(MSG_CODE_POSITION, {'x': self.player.x, 'y': self.player.y})
+            send_player_update = True
 
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
@@ -88,15 +91,18 @@ class PygameApp:
                 is_keydown = event.type == KEYDOWN
                 if event.key == KEYBIND_EYE and self.player.loading in [Player.LOADING_TYPE_NONE, Player.LOADING_TYPE_EYE]:
                     self.player.set_loading_client(Player.LOADING_TYPE_EYE if is_keydown else Player.LOADING_TYPE_NONE)
-                    self.client.send_message(MSG_CODE_LOAD, {'loading': self.player.loading})
+                    send_player_update = True
                 elif event.key == KEYBIND_MINE and self.player.loading in [Player.LOADING_TYPE_NONE, Player.LOADING_TYPE_MINE]:
                     self.player.set_loading_client(Player.LOADING_TYPE_MINE if is_keydown else Player.LOADING_TYPE_NONE)
-                    self.client.send_message(MSG_CODE_LOAD, {'loading': self.player.loading})
+                    send_player_update = True
             elif event.type == MOUSEBUTTONDOWN:
                 if event.button == 1:
                     new_missile = self.player.add_missile_client(aiming_destination)
                     if new_missile is not None:
-                        self.client.send_message(MSG_CODE_ADD_MISSILE, new_missile.to_dict())
+                        send_player_update = True
+                    
+        if send_player_update:
+            self.client.send_player_update(self.player)
                     
     def render(self, aiming_destination: Tuple[int, int]):
 
@@ -115,7 +121,7 @@ class PygameApp:
 
         self.window_surface.set_clip(None)
 
-        for player in self.last_gamestate.players.values():
+        for player in self.gamestate.players.values():
             for mine in player.mines:
                 mine.render_base(self.window_surface, visibility_rects, self.mine_surfaces)
             for eye in player.eyes:
@@ -126,10 +132,10 @@ class PygameApp:
             self.window_surface.blit(self.mg_surface, (0, 0))
         self.window_surface.set_clip(None)
 
-        for player in self.last_gamestate.players.values():
+        for player in self.gamestate.players.values():
             player.render(self.window_surface, visibility_rects, self.color_scheme)
 
-        for player in self.last_gamestate.players.values():
+        for player in self.gamestate.players.values():
             for mine in player.mines:
                 mine.render_explosion(self.window_surface, visibility_rects, self.mine_explosion_surfaces)
             for missile in player.missiles:
@@ -145,16 +151,25 @@ class PygameApp:
 
     def loop(self):
 
+        previous_time = time.perf_counter()
+
         while True:
+
+            current_time = time.perf_counter()
+            dt_s = current_time - previous_time
 
             new_gamestate = self.client.get_gamestate()
             if new_gamestate != None:
-                self.last_gamestate = new_gamestate
-                self.client.reset_gamestate_updated()
-                self.player = self.last_gamestate.players.get(self.sockname, None)
+                self.gamestate.integrate_incoming_server_gamestate(self.sockname, new_gamestate)
 
-            if self.player is None:
-                continue
+            kill_flag = self.client.get_kill_flag()
+            if kill_flag:
+                self.player.kill()
+
+            hits = self.player.update_and_get_hits(self.gamestate, dt_s)
+            for peername in hits:
+                print('Sending kill notification to', peername)
+                self.client.send_kill_notification(peername)
 
             keys = pygame.key.get_pressed()
             mouse_pos = pygame.mouse.get_pos()
@@ -172,3 +187,5 @@ class PygameApp:
                     
             pygame.display.update()
             self.clock.tick(self.fps)
+
+            previous_time = current_time

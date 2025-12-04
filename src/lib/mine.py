@@ -39,6 +39,7 @@ class Mine:
         self.triggered = False
         self.detonate_time = 0
         self.explosion_time = 0
+        self.just_detonated = False
 
     @property
     def detonated(self):
@@ -101,19 +102,8 @@ class Mine:
                 if distance_sq <= Mine.TRIGGER_RADIUS * Mine.TRIGGER_RADIUS:
                     self.trigger()
                     break
-
-    def check_for_hits(self, gamestate):
-
-        for player in gamestate.players.values():
-            if player.id != self.player_id and player.alive:
-                dx = player.x - self.position[0]
-                dy = player.y - self.position[1]
-                distance_sq = dx * dx + dy * dy
-                if distance_sq <= Mine.EXPLOSION_RADIUS * Mine.EXPLOSION_RADIUS:
-                    print('Mine hit player', player.id)
-                    player.kill()
     
-    def update(self, gamestate, dt_s: float):
+    def update(self, dt_s: float):
 
         if self.triggered:
             if self.detonate_time > 0:
@@ -121,13 +111,27 @@ class Mine:
                 if self.detonate_time <= 0:
                     self.detonate_time = 0
                     self.explosion_time = Mine.EXPLOSION_TIME_S
-                    self.check_for_hits(gamestate)
+                    self.just_detonated = True
             elif self.explosion_time > 0:
                 self.explosion_time = max(0, self.explosion_time - dt_s)
                 if self.explosion_time == 0:
                     self.explosion_time = 0
-        else:
-            self.check_for_trigger(gamestate)
+
+    def check_for_hits(self, gamestate):
+
+        if not self.just_detonated:
+            return []
+
+        self.just_detonated = False
+        hit_players = []
+        for peername, player in gamestate.players.items():
+            if player.id != self.player_id and player.alive:
+                dx = player.x - self.position[0]
+                dy = player.y - self.position[1]
+                distance_sq = dx * dx + dy * dy
+                if distance_sq <= Mine.EXPLOSION_RADIUS * Mine.EXPLOSION_RADIUS:
+                    hit_players.append(peername)
+        return hit_players
 
     def render_base(self, surface: pygame.Surface, visibility_rects: List[pygame.Rect], mine_surfaces: List[Dict[str, pygame.Surface]]):
 
